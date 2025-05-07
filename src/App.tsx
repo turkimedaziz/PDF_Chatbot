@@ -22,28 +22,38 @@ function App() {
   const [pdfInfo, setPdfInfo] = useState<FileInfo | null>(null);
   const [isPdfUploaded, setIsPdfUploaded] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto scroll to bottom of messages
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
+  const getPdfAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       const file = files[0];
-      
-      // Check if file is a PDF
+
       if (file.type !== 'application/pdf') {
-        setError('Please upload a PDF file');
+        setError('Please upload a valid PDF file.');
         return;
       }
-      
+
       setPdfFile(file);
       setPdfInfo({
         name: file.name,
@@ -52,8 +62,7 @@ function App() {
       });
       setIsPdfUploaded(true);
       setError(null);
-      
-      // Add a message from the bot acknowledging the PDF upload
+
       addMessage({
         id: Date.now().toString(),
         text: `PDF uploaded: ${file.name}. You can now ask questions about this document.`,
@@ -63,45 +72,59 @@ function App() {
     }
   };
 
-  const addMessage = (message: Message) => {
-    setMessages(prev => [...prev, message]);
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!inputValue.trim()) return;
-    
-    // If PDF is not uploaded and we're not in the upload stage, show error
-    if (!isPdfUploaded) {
-      setError('Please upload a PDF file first');
-      return;
-    }
-    
-    // Add user message
-    const userMessage: Message = {
+    if (!inputValue.trim() || !pdfFile) return;
+
+    addMessage({
       id: Date.now().toString(),
       text: inputValue,
       sender: 'user',
       timestamp: new Date()
-    };
-    
-    addMessage(userMessage);
+    });
+
     setInputValue('');
     setIsLoading(true);
-    
-    // Simulate bot response (replace with actual API call to your backend)
-    setTimeout(() => {
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: `I've analyzed the PDF "${pdfInfo?.name}". Based on the content, I can answer that your question about "${inputValue}" relates to specific information on pages 2-3 of the document. The answer is that [simulated response based on PDF content].`,
+
+    try {
+      const base64Pdf = await getPdfAsBase64(pdfFile);
+      const response = await fetch('http://localhost:3000/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: inputValue,
+          pdf: base64Pdf
+        })
+      });
+
+      const data = await response.json();
+      addMessage({
+        id: Date.now().toString(),
+        text: data.response,
         sender: 'bot',
         timestamp: new Date()
-      };
-      
-      addMessage(botMessage);
+      });
+    } catch (err) {
+      setError('Failed to get response from server.');
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
+  };
+
+  const addMessage = (message: Message) => {
+    setMessages(prev => [...prev, message]);
+  };
+
+  const handleNewPdf = () => {
+    setPdfFile(null);
+    setPdfInfo(null);
+    setIsPdfUploaded(false);
+    setMessages([]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleSelectFileClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -112,55 +135,17 @@ function App() {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      
-      if (file.type !== 'application/pdf') {
-        setError('Please upload a PDF file');
-        return;
-      }
-      
-      setPdfFile(file);
-      setPdfInfo({
-        name: file.name,
-        size: file.size,
-        type: file.type
-      });
-      setIsPdfUploaded(true);
-      setError(null);
-      
-      addMessage({
-        id: Date.now().toString(),
-        text: `PDF uploaded: ${file.name}. You can now ask questions about this document.`,
-        sender: 'bot',
-        timestamp: new Date()
-      });
-    }
-  };
-
-  const handleSelectFileClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
+    if (e.dataTransfer.files.length > 0) {
+      handleFileChange({ target: { files: e.dataTransfer.files } } as React.ChangeEvent<HTMLInputElement>);
     }
   };
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-  };
-
-  // Function to reset and upload a new PDF
-  const handleNewPdf = () => {
-    setPdfFile(null);
-    setPdfInfo(null);
-    setIsPdfUploaded(false);
-    setMessages([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    return bytes < 1024
+      ? `${bytes} bytes`
+      : bytes < 1048576
+        ? `${(bytes / 1024).toFixed(1)} KB`
+        : `${(bytes / 1048576).toFixed(1)} MB`;
   };
 
   return (
@@ -176,7 +161,7 @@ function App() {
 
       <main className="main-content">
         {!isPdfUploaded ? (
-          <div 
+          <div
             className="upload-container"
             onDragOver={handleDragOver}
             onDrop={handleDrop}
@@ -184,13 +169,10 @@ function App() {
             <div className="upload-box">
               <h2>Upload a PDF Document</h2>
               <p>Drag and drop your PDF here or click to browse</p>
-              <button 
-                className="upload-button"
-                onClick={handleSelectFileClick}
-              >
+              <button onClick={handleSelectFileClick} className="upload-button">
                 Select PDF File
               </button>
-              <input 
+              <input
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
@@ -212,8 +194,8 @@ function App() {
 
             <div className="messages-container">
               {messages.map(message => (
-                <div 
-                  key={message.id} 
+                <div
+                  key={message.id}
                   className={`message ${message.sender === 'user' ? 'user-message' : 'bot-message'}`}
                 >
                   <div className="message-content">
@@ -228,9 +210,7 @@ function App() {
                 <div className="message bot-message">
                   <div className="message-content">
                     <div className="typing-indicator">
-                      <span></span>
-                      <span></span>
-                      <span></span>
+                      <span></span><span></span><span></span>
                     </div>
                   </div>
                 </div>
@@ -246,11 +226,7 @@ function App() {
                 placeholder="Ask a question about the PDF..."
                 className="message-input"
               />
-              <button 
-                type="submit" 
-                className="send-button"
-                disabled={isLoading || !inputValue.trim()}
-              >
+              <button type="submit" className="send-button" disabled={isLoading || !inputValue.trim()}>
                 Send
               </button>
             </form>
