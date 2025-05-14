@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './App.css';
+
 
 interface Message {
   id: string;
@@ -199,7 +202,18 @@ function App() {
                   className={`message ${message.sender === 'user' ? 'user-message' : 'bot-message'}`}
                 >
                   <div className="message-content">
-                    <p>{message.text}</p>
+                    <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({ node, ...props }) => <h1 className="markdown-h1" {...props} />,
+                      h2: ({ node, ...props }) => <h2 className="markdown-h2" {...props} />,
+                      strong: ({ node, ...props }) => <strong className="markdown-strong" {...props} />,
+                      li: ({ node, ...props }) => <li className="markdown-li" {...props} />,
+                      p: ({ node, ...props }) => <p className="markdown-paragraph" {...props} />,
+                    }}
+                    >
+                      {message.text}
+                    </ReactMarkdown>
                     <span className="message-time">
                       {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
