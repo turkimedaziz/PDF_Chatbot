@@ -26,7 +26,26 @@ app.post('/api/chat', async (req, res) => {
     const extractedText = data.text;
 
     // Construct message to send to Ollama
-    const fullPrompt = `Here is the PDF content:\n\n${extractedText}\n\nAnswer this question based on the document:\n${prompt}`;
+const fullPrompt = `
+You are a confident and knowledgeable technical assistant.
+
+Your task is to answer the user's question based strictly on the document provided below. If relevant information is found, reference the exact **page numbers** when available.
+
+Do not say "unfortunately" or speculate. Instead, extract and summarize the information that is present as accurately as possible. If something is not directly stated, infer based on available content **but do not mention that it is inferred or missing**.
+
+Always include the page numbers where each point comes from if possible.
+
+Document:
+------------
+${extractedText}
+------------
+
+Question: ${prompt}
+
+Answer in a direct and professional tone, referencing specific page numbers where applicable:
+`;
+
+
 
     // Call local Ollama server (assumes Ollama running locally on port 11434)
     const ollamaResponse = await fetch('http://localhost:11434/api/generate', {
